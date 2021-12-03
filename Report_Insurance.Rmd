@@ -1,0 +1,74 @@
+---
+title: "Health Insurance Charges Report"
+author: "Xiang Li"
+date: "11/30/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+library(readr)
+library(ggplot2)
+library(arm)
+library(rstanarm)
+library(dplyr) 
+library(lattice)
+
+insurance <- read.csv("insurance.csv",header = T)
+insurance <-insurance %>% mutate(
+  age_Group=case_when(
+    age<=20 ~ "Group1",
+    age>20 & age<=30 ~"Group2",
+    age>30 & age<=40 ~"Group3",
+    age>40 & age<=50 ~"Group4",
+    age>50 & age<=60 ~"Group5",
+    TRUE ~ "Group6"
+  ),
+  bmi_Group=case_when(
+    bmi<=18.5 ~ "UnderWeight",
+    bmi>18.5 & bmi<=24.9 ~"HealthyWeight",
+    bmi>25 & bmi<=29.9 ~"OverWeight",
+    TRUE ~ "Obese" 
+  ),
+  Sex=case_when(
+    sex =="female"~0,
+    TRUE ~ 1
+  ),
+  Region=case_when(
+    region =="northwest" ~ 1,
+    region =="northeast" ~ 2,
+    region =="southwest" ~ 3,
+    TRUE ~ 4
+  ),
+  Smoker=case_when(
+    smoker =="no" ~ 0,
+    TRUE ~ 1
+  )
+)
+```
+
+## Abstract
+Health insurance pays for some or all the cost of the health services you receive, like doctors’ visits, hospital stays, and visits to the emergency room. It helps keep your health care costs predictable and affordable. Although being covered by your insurance, you may still have to pay amounts for health insurance, such as premium. In this report, I will analyze how the insurance charges are affected by other factors.
+## Introduction
+
+## Method
+## Data
+
+Column names       | Explanation 
+------             | ---------
+age                | Age of primary beneficiary
+sex                | Insurance contractor gender, female / male
+bmi                | Body mass index
+children           | Number of children covered by health insurance 
+smoker             | Smoker / Non - smoker
+region             | The beneficiary's residential area in the US, northeast/southeast/ southwest/northwest
+charges            | Individual medical costs billed by health insurance.
+# Result
+
+# Discussion
+
+
+## Appendeix
+https://www.cdc.gov/healthyweight/assessing/index.html
