@@ -1,20 +1,26 @@
 ---
-title: "Health Insurance Charges Report"
+title: "MA678 Midterm Report"
 author: "Xiang Li"
 date: "11/30/2021"
 output:
   pdf_document:
     latex_engine: xelatex
+  html_document:
+    df_print: paged
+subtitle: -Health Insurance Charges
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
 library(readr)
 library(ggplot2)
+library(ggcorrplot)
 library(arm)
 library(rstanarm)
 library(dplyr) 
 library(lattice)
+library(gridExtra)
+library(lmerTest)
 
 insurance <- read.csv("insurance.csv",header = T)
 insurance <-insurance %>% mutate(
@@ -45,16 +51,24 @@ insurance <-insurance %>% mutate(
   Smoker=case_when(
     smoker =="no" ~ 0,
     TRUE ~ 1
-  )
+  ),
+  Log_charges = log(charges)
 )
 ```
 
-## Abstract
-Health insurance pays for some or all the cost of the health services you receive, like doctors’ visits, hospital stays, and visits to the emergency room. It helps keep your health care costs predictable and affordable. Although being covered by your insurance, you may still have to pay amounts for health insurance, such as premium. In this report, I will analyze how the insurance charges are affected by other factors.
-## Introduction
+## Abstract 
+
+Health insurance provides financial protection in case people have a serious accident or illness. Health care can be very expensive. It can be an enormous financial burden. Therefore, health insurance is important to have health insurance as a safety net. In this report, I explored the US health insurance data set from Kaggle which included 1337 observations to analysis how the insurance charges are affected by other factors such as age, sex, and so on. By using multilevel model, 
+
+## Introduction 
+
+__Health insurance__ pays for some or all the cost of the health services you receive, like doctors’ visits, hospital stays, and visits to the emergency room. It helps keep your health care costs predictable and affordable. Although being covered by your insurance, you may still have to pay amounts for health insurance, such as premium. In this report, I will analyze how the insurance charges are affected by other factors.
 
 ## Method
-## Data
+
+### Data Wrangling
+
+Datasource used in this report is a dataset named [_US Health Insurance Dataset_](https://www.kaggle.com/teertha/ushealthinsurancedataset) from Kaggle. This dataset is a mix of numeric and categorical variables. There are seven variables and 1337 observations, where the Insurance charges are given against the following attributes of the insured: Age, Sex, BMI, Number of Children, Smoker, and Region. According to CDC (https://www.cdc.gov/healthyweight/assessing/index.html), I divided BMI data into 4 groups and age data into 6 groups preparing for the following EDA.
 
 Column names       | Explanation 
 ------             | ---------
@@ -65,10 +79,171 @@ children           | Number of children covered by health insurance
 smoker             | Smoker / Non - smoker
 region             | The beneficiary's residential area in the US, northeast/southeast/ southwest/northwest
 charges            | Individual medical costs billed by health insurance.
+
+|BMI Data           | BMI Group        |      AGE Data          | AGE Group            
+|------             | ---------        |      -------           | ---------
+|bmi<=18.5          |UnderWeight       |      age <=20          |Group1
+|18.5< bmi<=24.9    |HealthyWeight     |     20< age <=30       |Group2
+|25<bmi<=29.9       |OverWeight        |     30< age<=40        |Group3
+|  bmi>=30          |Obese             |    40< age<=50         |Group4
+|                   |                  |    50 < age<=60        |Group5
+|                   |                  |        age> 60         |Group6
+
+### Exploratory Data Analysis
+  
+At first, I generated a correlation matrix to give me a basic sense of correlation between each factors.  
+
+```{r echo=FALSE, fig.height=3, fig.width=7.5, fig.align="center",fig.cap="Correlation plot"}
+
+insurance_numeric <- insurance[, c('age','Sex','Region','Smoker','children','bmi','Log_charges')]
+
+ggcorrplot(cor(insurance_numeric), 
+           outline.color = "white",
+           ggtheme = ggplot2::theme_gray,
+  colors = c("#6D9EC1", "white", "#E46726"),
+           hc.order = TRUE, type = "lower",
+           legend.title = "Correlation",
+           lab = TRUE,
+           lab_size = 2,
+           tl.cex = 8,
+           tl.srt = 0,
+           title = "Correlation Between Insurance Predictors") + 
+  theme(plot.title = element_text(hjust = 0.5, size=10), legend.title = element_text(size = 10))
+
+```
+According to the previous correlation plot, I can conclude that the premium charges show a strong positive correlation with smoking habits. Therefore, I’d like to analyze when outcome is log(charges) the relationship between smoking habits and several random effects which are age group, BMI group, children, and region. 
+ 
+```{r echo=FALSE, fig.height=3.5, fig.width=8, fig.cap="Relationship between smoker and charges" }
+#smoker random effect is age_Group
+p1 <- ggplot(data = insurance,aes(smoker,log(charges),color=age_Group)) +
+  geom_point() +
+  geom_smooth(formula=y~x,method="lm",aes(group=age_Group),se=F) +
+  ylab("log(charges) ")
+#smoker random effect is bmi
+p2 <- ggplot(data = insurance,aes(smoker,log(charges),color=bmi_Group)) +
+  geom_point() +
+  geom_smooth(formula=y~x,method="lm",aes(group=bmi_Group),se=F) +
+  ylab("log(charges) ")
+#The effect of location is random (varying slope):
+#random effect is children
+p3 <- ggplot(data = insurance,aes(smoker,log(charges),color=factor(children))) +
+  geom_point() +
+  geom_smooth(formula=y~x,method="lm",aes(group=children),se=F) +
+  ylab("log(charges) ")
+#region
+p4 <- ggplot(data = insurance,aes(smoker,log(charges),color=region)) +
+  geom_point() +
+  geom_smooth(formula=y~x,method="lm",aes(group=region),se=F) +
+  ylab("log(charges) ")
+#Display
+grid.arrange(p1,p2,p3,p4,ncol=2)
+```
+\newpage
+
+```{r echo=FALSE, fig.height=3.5, fig.width=10, fig.cap="Relationship between age and insurance charges & bmi and insurance charges when random effect is children" }
+
+plot4 <- ggplot(data = insurance)+
+  aes(age,log(charges))+
+  geom_point(aes(color = factor(children)),alpha = 0.3)+
+  labs(title="AGE vs Charges",x="Age",y="log(Charges)")+
+  geom_smooth(aes(color = factor(children)),method = "lm",se=F,formula = y~x)
+
+plot4.2 <- ggplot(data = insurance)+
+  aes(bmi,log(charges))+
+  geom_point(aes(color = factor(children)),alpha = 0.3)+
+  labs(title="BMI vs Charges",x="BMI",y="log(Charges)")+
+  geom_smooth(aes(color = factor(children)),method = "lm",se=F,formula = y~x)
+
+grid.arrange(plot4,plot4.2, ncol = 2)
+```
+```{r echo=FALSE, fig.height=3.5, fig.width=10, fig.cap="Relationship between age and insurance charges & bmi and insurance charges when random effect is region"}
+plot3 <- ggplot(data = insurance)+
+  aes(bmi,log(charges))+
+  geom_point(aes(color = region),alpha = 0.3)+
+  labs(title="BMI vs Charges",x="BMI",y="log(Charges)")+
+  geom_smooth(aes(color = region),method = "lm",se=F,formula = y~x)
+plot3.2 <- ggplot(data = insurance)+
+  aes(age,log(charges))+
+  geom_point(aes(color = region),alpha = 0.3)+
+  labs(title="AGE vs Charges",x="AGE",y="log(Charges)")+
+  geom_smooth(aes(color = region),method = "lm",se=F,formula = y~x)
+grid.arrange(plot3,plot3.2, ncol = 2)
+```
+```{r echo=FALSE, fig.height=3.5, fig.width=10, fig.align="center", fig.cap="Residual plot and Q-Q plot"}
+log_charges <- log(insurance$charges)
+children <- as.factor(insurance$children)
+age <-  as.numeric(insurance$age)
+
+fit_model_5<- lmer(log_charges ~ log(age)+sex+smoker+children+(1+smoker|age_Group)+(1+smoker|bmi_Group)+(1+bmi|children)+(1+bmi|region),data=insurance)
+
+#display(fit_model_5)
+#coef(fit_model_5)
+#1
+summary(fit_model_5)
+round(summary(fit_model_5)$coefficient, digits = 4)
+round(ranef(fit_model_5)$age_Group, digits = 4)
+
+ residul_plot.5 <- plot(fit_model_5)
+ qq_plot.5 <- qqmath(fit_model_5)
+
+grid.arrange( residul_plot.5,qq_plot.5,nrow=2)
+```
+
+
 # Result
 
 # Discussion
 
 
+\newpage 
+
 ## Appendeix
-https://www.cdc.gov/healthyweight/assessing/index.html
+In appendeix, I will show more EDA that I generated.  
+Here are violin plots showing the distributions of chargers and each of other factors.
+
+```{r echo=FALSE, fig.height=3.5, fig.width=10}
+vilion_plot1<-ggplot(data = insurance, aes(x=bmi_Group, y=log(charges), fill=bmi_Group)) +
+  geom_violin(trim=FALSE)+ scale_fill_brewer(palette="Blues")+ 
+ geom_boxplot(width=0.1, fill="white")+
+  labs(title="Plot of charges by bmi_Group",x="bmi_Group", y = "Charges")+
+  theme_classic()
+
+vilion_plot2<-ggplot(data = insurance, aes(x=smoker, y=log(charges), fill=smoker)) +
+  geom_violin(trim=FALSE)+ scale_fill_brewer(palette="Blues")+ 
+ geom_boxplot(width=0.1, fill="white")+
+  labs(title="Plot of Charges by Smokers",x="Smoker", y = "Charges")+
+  theme_classic()
+
+
+vilion_plot3<-ggplot(data = insurance, aes(x=region, y=log(charges), fill=region)) +
+  geom_violin(trim=FALSE)+ scale_fill_brewer(palette="Blues")+ 
+ geom_boxplot(width=0.1, fill="white")+
+  labs(title="Plot of Charges by Region",x="Region", y = "Charges")+
+  theme_classic()
+
+vilion_plot4<-ggplot(data = insurance, aes(x=age_Group, y=log(charges), fill=age_Group)) +
+  geom_violin(trim=FALSE)+ scale_fill_brewer(palette="Blues")+ 
+  labs(title="Plot of charges by Age Group",x="Age Group", y = "Charges")+
+  theme_classic()
+
+vilion_plot5<-ggplot(data = insurance, aes(x=sex, y=log(charges), fill=sex)) +
+  geom_violin(trim=FALSE)+ scale_fill_brewer(palette="Blues")+ 
+ geom_boxplot(width=0.1, fill="white")+
+  labs(title="Plot of charges by Sex Group",x="Sex", y = "Charges")+
+  theme_classic()
+
+vilion_plot6<-ggplot(data = insurance, aes(x=factor(children), y=log(charges), fill=factor(children))) +
+  geom_violin(trim=FALSE)+ scale_fill_brewer(palette="Blues")+ 
+ geom_boxplot(width=0.1, fill="white")+
+  labs(title="Plot of charges by children Group",x="Children Group", y = "Charges")+
+  theme_classic()
+grid.arrange(vilion_plot1,vilion_plot2, ncol = 2)
+grid.arrange(vilion_plot3,vilion_plot4, ncol = 2)
+grid.arrange(vilion_plot5,vilion_plot6, ncol = 2)
+```
+```{r}
+y.5 <- resid(fit_model_5)
+x.5 <- predict(fit_model_5)
+binnedplot(x.5,y.5)
+```
+
