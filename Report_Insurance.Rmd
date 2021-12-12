@@ -1,17 +1,15 @@
 ---
-title: "MA678 Midterm Report"
+title: "Health Insurance Charges"
 author: "Xiang Li"
 date: "11/30/2021"
+geometry: "left=3cm,right=3cm,top=2cm,bottom=2cm"
 output:
   pdf_document:
     latex_engine: xelatex
-  html_document:
-    df_print: paged
-subtitle: -Health Insurance Charges
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(echo= FALSE, message = FALSE, warning = FALSE)
 library(readr)
 library(ggplot2)
 library(ggcorrplot)
@@ -21,7 +19,9 @@ library(dplyr)
 library(lattice)
 library(gridExtra)
 library(lmerTest)
-
+library(jtools)
+library(merTools)
+library(formattable)
 insurance <- read.csv("insurance.csv",header = T)
 insurance <-insurance %>% mutate(
   age_Group=case_when(
@@ -52,33 +52,22 @@ insurance <-insurance %>% mutate(
     smoker =="no" ~ 0,
     TRUE ~ 1
   ),
-  Log_charges = log(charges)
+  log_charges = log(charges),
 )
+insurance[,' Children']<-factor(insurance[,'children'])
 ```
 
-## Abstract 
+# Abstract 
 
-Health insurance provides financial protection in case people have a serious accident or illness. Health care can be very expensive. It can be an enormous financial burden. Therefore, health insurance is important to have health insurance as a safety net. In this report, I explored the US health insurance data set from Kaggle which included 1337 observations to analysis how the insurance charges are affected by other factors such as age, sex, and so on. By using multilevel model, 
+__Health insurance__ provides financial protection in case people have a serious accident or illness. Health care can be very expensive. It can be an enormous financial burden. Therefore, health insurance is important to have health insurance as a safety net. However, what will make insurance company charges are so different. In other words, which people choose expensive insurance packages and which group of people choose cheaper insurance packages. I explored the US health insurance data set from Kaggle which included 1337 observations to analyze how the insurance `charges` are affected by other factors such as `age`, `sex`, and so on. By using the multilevel linear regression model, I conduct that `smoking habit` has the most significant effect on the insurance charges and `age` and `bmi` have a slight positive effect on the insurance charges. I use three groups as a random effect, which are `age_group`, `bmi group`, and `region` and state that variables mentioned before are slightly different between random effects. In this report, there are four main parts, which are Introduction, Method, Result, and Discussion. 
 
-## Introduction 
+# Introduction 
 
-__Health insurance__ pays for some or all the cost of the health services you receive, like doctors’ visits, hospital stays, and visits to the emergency room. It helps keep your health care costs predictable and affordable. Although being covered by your insurance, you may still have to pay amounts for health insurance, such as premium. In this report, I will analyze how the insurance charges are affected by other factors.
+__Health insurance__ pays for some or all the cost of the health services you receive, like doctors’ visits, hospital stays, and visits to the emergency room. It helps keep your health care costs predictable and affordable. What kind of package people choose decides the coverage by the insurance company. Data source used in this report is a dataset named [_US Health Insurance Dataset_](https://www.kaggle.com/teertha/ushealthinsurancedataset) from Kaggle. This dataset is a mix of numeric and categorical variables. There are seven variables and 1337 observations, where the Insurance charges are given against the following attributes of the insured: `Age`, `Sex`, `BMI`, `Number of Children`, `Smoker`, and `Region`. 
 
-## Method
+# Method
 
-### Data Wrangling
-
-Datasource used in this report is a dataset named [_US Health Insurance Dataset_](https://www.kaggle.com/teertha/ushealthinsurancedataset) from Kaggle. This dataset is a mix of numeric and categorical variables. There are seven variables and 1337 observations, where the Insurance charges are given against the following attributes of the insured: Age, Sex, BMI, Number of Children, Smoker, and Region. According to CDC (https://www.cdc.gov/healthyweight/assessing/index.html), I divided BMI data into 4 groups and age data into 6 groups preparing for the following EDA.
-
-Column names       | Explanation 
-------             | ---------
-age                | Age of primary beneficiary
-sex                | Insurance contractor gender, female / male
-bmi                | Body mass index
-children           | Number of children covered by health insurance 
-smoker             | Smoker / Non - smoker
-region             | The beneficiary's residential area in the US, northeast/southeast/ southwest/northwest
-charges            | Individual medical costs billed by health insurance.
+According to CDC's weight assessment, I divided BMI data into 4 groups and age data into 6 groups preparing for the following EDA.
 
 |BMI Data           | BMI Group        |      AGE Data          | AGE Group            
 |------             | ---------        |      -------           | ---------
@@ -89,31 +78,28 @@ charges            | Individual medical costs billed by health insurance.
 |                   |                  |    50 < age<=60        |Group5
 |                   |                  |        age> 60         |Group6
 
-### Exploratory Data Analysis
-  
-At first, I generated a correlation matrix to give me a basic sense of correlation between each factors.  
+\newpage
 
-```{r echo=FALSE, fig.height=3, fig.width=7.5, fig.align="center",fig.cap="Correlation plot"}
+## Exploratory Data Analysis
 
-insurance_numeric <- insurance[, c('age','Sex','Region','Smoker','children','bmi','Log_charges')]
+In the beginning, I make density plots to see whether the charge is following a normal distribution. Using `bmi_Group` as an example to see the distribution.  
 
-ggcorrplot(cor(insurance_numeric), 
-           outline.color = "white",
-           ggtheme = ggplot2::theme_gray,
-  colors = c("#6D9EC1", "white", "#E46726"),
-           hc.order = TRUE, type = "lower",
-           legend.title = "Correlation",
-           lab = TRUE,
-           lab_size = 2,
-           tl.cex = 8,
-           tl.srt = 0,
-           title = "Correlation Between Insurance Predictors") + 
-  theme(plot.title = element_text(hjust = 0.5, size=10), legend.title = element_text(size = 10))
 
-```
-According to the previous correlation plot, I can conclude that the premium charges show a strong positive correlation with smoking habits. Therefore, I’d like to analyze when outcome is log(charges) the relationship between smoking habits and several random effects which are age group, BMI group, children, and region. 
- 
-```{r echo=FALSE, fig.height=3.5, fig.width=8, fig.cap="Relationship between smoker and charges" }
+```{r fig.height=4, fig.width=8, fig.cap="Distribution of charges among different bmi group"}
+densityplot(~charges,data=insurance,
+       groups= bmi_Group,
+       xlab="charges",
+       main="Insurance Charges by BMI",
+       plot.points=FALSE,
+       auto.key=TRUE)
+
+```  
+
+Since figure 1 showed a right-skewed distribution, I use `insurance charges` in log transformation in the following EDA and model fitting. 
+
+I’d like to analyze when the outcome is `log(charges)`, the relationship between smoking habits, and several random effects which are `age_Group`, `bmi_Group`, `children`, and `region`. 
+
+```{r fig.height=4, fig.width=10, fig.cap="Relationship between smoker and charges" }
 #smoker random effect is age_Group
 p1 <- ggplot(data = insurance,aes(smoker,log(charges),color=age_Group)) +
   geom_point() +
@@ -128,7 +114,7 @@ p2 <- ggplot(data = insurance,aes(smoker,log(charges),color=bmi_Group)) +
 #random effect is children
 p3 <- ggplot(data = insurance,aes(smoker,log(charges),color=factor(children))) +
   geom_point() +
-  geom_smooth(formula=y~x,method="lm",aes(group=children),se=F) +
+  geom_smooth(formula=y~x,method="lm",aes(group=factor(children)),se=F) +
   ylab("log(charges) ")
 #region
 p4 <- ggplot(data = insurance,aes(smoker,log(charges),color=region)) +
@@ -138,25 +124,40 @@ p4 <- ggplot(data = insurance,aes(smoker,log(charges),color=region)) +
 #Display
 grid.arrange(p1,p2,p3,p4,ncol=2)
 ```
-\newpage
 
-```{r echo=FALSE, fig.height=3.5, fig.width=10, fig.cap="Relationship between age and insurance charges & bmi and insurance charges when random effect is children" }
+Figure 2 shows that `age_Group` has different effects on smoking habits with different interceptions and slopes. Since the older group has a smaller slope than the young group. For other random effects, there is a barely obvious distinction. 
 
-plot4 <- ggplot(data = insurance)+
-  aes(age,log(charges))+
-  geom_point(aes(color = factor(children)),alpha = 0.3)+
-  labs(title="AGE vs Charges",x="Age",y="log(Charges)")+
-  geom_smooth(aes(color = factor(children)),method = "lm",se=F,formula = y~x)
+Then I’d like to analyze when the outcome is `log(charges)` the relationship between `sex` and several random effects which are `age_Group`, `bmi_Group`, `children`, and `region`.
 
-plot4.2 <- ggplot(data = insurance)+
-  aes(bmi,log(charges))+
-  geom_point(aes(color = factor(children)),alpha = 0.3)+
-  labs(title="BMI vs Charges",x="BMI",y="log(Charges)")+
-  geom_smooth(aes(color = factor(children)),method = "lm",se=F,formula = y~x)
-
-grid.arrange(plot4,plot4.2, ncol = 2)
+```{r fig.height=4, fig.width=10, fig.cap = "Relationship between sex and charges in four different group"}
+#random effect is age
+p5 <- ggplot(data = insurance,aes(sex,log(charges),color=age_Group)) +
+  geom_point() +
+  geom_smooth(formula=y~x,method="lm",aes(group=age_Group),se=F) +
+  ylab("log(charges) ")
+#smoker random effect is bmi
+p6 <- ggplot(data = insurance,aes(sex,log(charges),color=bmi_Group)) +
+  geom_point() +
+  geom_smooth(formula=y~x,method="lm",aes(group=bmi_Group),se=F) +
+  ylab("log(charges) ")
+#random effect is children
+p7 <- ggplot(data = insurance,aes(sex,log(charges),color=factor(children))) +
+  geom_point() +
+  geom_smooth(formula=y~x,method="lm",aes(group=children),se=F) +
+  ylab("log(charges) ")
+#region
+p8 <- ggplot(data = insurance,aes(sex,log(charges),color=region)) +
+  geom_point() +
+  geom_smooth(formula=y~x,method="lm",aes(group=region),se=F) +
+  ylab("log(charges) ")
+grid.arrange(p5,p6,p7,p8,ncol=2)
 ```
-```{r echo=FALSE, fig.height=3.5, fig.width=10, fig.cap="Relationship between age and insurance charges & bmi and insurance charges when random effect is region"}
+
+Figure 3 shows that `bmi_Group` has different effects on `Sex`. Underweight and healthy-weight males have less charge than underweight and overweight females. However, overweight and obese males have less charge than Underweight and overweight females. For other random effects, they don't have a clear distinction to the variable of `Sex`.
+
+Next, I’d like to analyze when the outcome is `log(charges)` the relationship between `age` and `insurance charges` & `bmi` and `insurance charges` when a random effect is `region`.
+
+```{r fig.height=4, fig.width=10, fig.cap= "Relationship between age and insurance charges & bmi and insurance charges when random effect is region"}
 plot3 <- ggplot(data = insurance)+
   aes(bmi,log(charges))+
   geom_point(aes(color = region),alpha = 0.3)+
@@ -169,39 +170,112 @@ plot3.2 <- ggplot(data = insurance)+
   geom_smooth(aes(color = region),method = "lm",se=F,formula = y~x)
 grid.arrange(plot3,plot3.2, ncol = 2)
 ```
-```{r echo=FALSE, fig.height=3.5, fig.width=10, fig.align="center", fig.cap="Residual plot and Q-Q plot"}
-log_charges <- log(insurance$charges)
-children <- as.factor(insurance$children)
-age <-  as.numeric(insurance$age)
 
-fit_model_5<- lmer(log_charges ~ log(age)+sex+smoker+children+(1+smoker|age_Group)+(1+smoker|bmi_Group)+(1+bmi|children)+(1+bmi|region),data=insurance)
 
-#display(fit_model_5)
-#coef(fit_model_5)
-#1
-summary(fit_model_5)
-round(summary(fit_model_5)$coefficient, digits = 4)
-round(ranef(fit_model_5)$age_Group, digits = 4)
+Figure 4 shows that different region has different effects on age since I observed distinct slopes and different intercepts. In the `southeast`, the slope is obviously more placid than others. In the right figure, the random effect of `region` doesn’t have a clear distinction to the variable of `age`. Therefore, the random effect of the region has slightly difference on `bmi`.
 
- residul_plot.5 <- plot(fit_model_5)
- qq_plot.5 <- qqmath(fit_model_5)
 
-grid.arrange( residul_plot.5,qq_plot.5,nrow=2)
+### Model Fitting 
+
+In accordance with the previous EDA section, I decided to use three groups as random effects, which are `age_Group`, `bmi_Group` and `region`, since when they are as random effects, the following function is the model I build for my research.
+
+
+```{r eval=FALSE, echo=TRUE}
+fit_model <-  lmer(log_charges~Sex+age+bmi+Smoker+
+                    (1+Smoker|age_Group)+
+                      (1+Sex|bmi_Group)+
+                      (1+bmi|region),data=insurance)
 ```
 
+Here is the summary of all fixed effects and all variables are considered as statistically significant at $\alpha$ = 0.5 level.
+
+|                |Estimate   |Std. Error   |df        |t value     |Pr(>&#124;t&#124;) |
+|-----           |-----      |-----        |-----      |-----      |-----              |
+|(Intercept)     |6.9847     |0.1491       |16.3060    |46.839     |< 2e-16 ***        |
+|Sex             |-0.0720    |0.0240       |13.0322    |-3.000     |0.01021 *          |
+|age             |0.0386     |0.0026       |9.0887     |14.804     |1.14e-07 ***       |
+|bmi             |0.0091     |0.0036       |7.9117     |2.501      |0.03720 *          |
+|Smoker          |1.5278     |0.2141       |4.6960     |7.136      |0.00109 **         |
+
+Therefore, the final model is 
+$$log(charges) = 6.9847 -0.072 \cdot Sex + 0.0386 \cdot age + 0.0091 \cdot bmi$$
+$$+ 1.5278  \cdot Smoker + ranef_{bmi_Group}+ranef_{age_Group}+ranef_{region}$$
+
+After deciding which model I would use through ANOVA comparison, I check the binned residual plot, residual vs fitted plot, and QQ plot, which are listed in the Appendix in the end of the report. In the QQ plot, almost one-third part of the points do not lie approximately on a straight line, which indicates that possible outliers are not in a normal distribution, distance from the bulk of the observations. Based on the binned residual plot, the model looks reasonable.
 
 # Result
 
+## Model Coefficients
+
+Here are the coefficients of the random effect of `age_Group`.
+
+```{r}
+fit_model_12 <-  lmer(log_charges~Sex+age+bmi+Smoker+
+                    (1+Smoker|age_Group)+
+                      (1+Sex|bmi_Group)+
+                      (1+bmi|region),data=insurance)
+as.data.frame(ranef(fit_model_12) $ age_Group)
+
+```
+
+Here are the coefficients of the random effect of `bmi_Group`.
+
+```{r}
+ as.data.frame(ranef(fit_model_12)$bmi_Group)
+
+```
+
+Here are the coefficients of the random effect of `region`.
+
+```{r}
+as.data.frame(ranef(fit_model_12) $ region)
+
+```
+
+And let's take the insured who are obese from the southeastern part of the United State who is in their thirties as an example. I would like to conduct the following formula.
+
+$$log(charges) = 7.177 -0.06 \cdot Sex + 0.0386 \cdot age + 0.0544 \cdot bmi+ 1.5426  \cdot Smoker $$
+
+For every 1% growth in age, the predicted insurance charge of the insured who are obese from the southeastern part of the United State who is in their thirties will be increasing 5.44%. It is similar interpretations to other group people.
+
 # Discussion
+
+From the previous processing, the result generated mostly are expected. People who have smoking habits are likely to purchase more expensive insurance packages and pay more premiums. And there is not surprising that the insured who has an older age, the premium will be higher. However, what I am not expecting is that underweight people have lower insurance charges than healthy-weight people. But it makes sense though, nowadays people do not pay much attention to the underweight group because common diseases such as hypertension and diabetes are obesity diseases. That means underweight people do not think they will experience chronic diseases, so they don't purchase very expensive insurance
+
+Moreover, regarding the dataset itself, it has limitations since there are only 1337 observations with seven predictors, and also the dataset is in 2019, two years ago before the Covid-19 pandemic. I believe that some people's ideas about insurance will change significantly after the epidemic, for example, they will upgrade their insurance to obtain more coverage. In other words, for the insured who have kids under the insurance, if they want to upgrade the package, the growth will be multiplied and even exponential.
+
+Since I am really interested in the topic, if there is updated data coming in, I will keep doing an analysis on the insurance charges.
+
+
+## Reference
+
+US Health Insurance Dataset, Anirban Datta,
+https://www.kaggle.com/teertha/ushealthinsurancedataset
+
+Centers for Disease Control and Prevention, Assessing Your Weight, 
+https://www.cdc.gov/healthyweight/assessing/index.html
 
 
 \newpage 
 
-## Appendeix
-In appendeix, I will show more EDA that I generated.  
+## Appendix
+
+This frame is the explanation of US Insurance Charges from Kaggle.
+
+Column names       | Explanation 
+------             | ---------
+age                | Age of primary beneficiary
+sex                | Insurance contractor gender, female / male
+bmi                | Body mass index
+children           | Number of children covered by health insurance 
+smoker             | Smoker / Non - smoker
+region             | The beneficiary's residential area in the US, northeast/southeast/ southwest/northwest
+charges            | Individual medical costs billed by health insurance.
+Smoker             | Yes=1,No=1
+
 Here are violin plots showing the distributions of chargers and each of other factors.
 
-```{r echo=FALSE, fig.height=3.5, fig.width=10}
+```{r echo=FALSE, fig.height=3.5, fig.width=10, fig.cap="Vilion plots of the relationship between log_charge and other predictors."}
 vilion_plot1<-ggplot(data = insurance, aes(x=bmi_Group, y=log(charges), fill=bmi_Group)) +
   geom_violin(trim=FALSE)+ scale_fill_brewer(palette="Blues")+ 
  geom_boxplot(width=0.1, fill="white")+
@@ -241,9 +315,62 @@ grid.arrange(vilion_plot1,vilion_plot2, ncol = 2)
 grid.arrange(vilion_plot3,vilion_plot4, ncol = 2)
 grid.arrange(vilion_plot5,vilion_plot6, ncol = 2)
 ```
-```{r}
-y.5 <- resid(fit_model_5)
-x.5 <- predict(fit_model_5)
-binnedplot(x.5,y.5)
+
+```{r fig.height=3.5, fig.width=10, fig.cap="Density plots of different random effects"}
+
+density_1 <- densityplot(~charges,data=insurance,
+       groups=sex,
+       xlab="charges",
+       main="Fastest Speed Ever Driven,\nby Sex",
+       plot.points=FALSE,
+       auto.key=TRUE)
+
+density_2 <-densityplot(~charges,data=insurance,
+       groups= region,
+       xlab="charges",
+       main="Fastest Speed Ever Driven,\nby Sex",
+       plot.points=FALSE,
+       auto.key=TRUE)
+density_3 <-densityplot(~charges,data=insurance,
+       groups=children,
+       xlab="charges",
+       main="Fastest Speed Ever Driven,\nby Sex",
+       plot.points=FALSE,
+       auto.key=TRUE)
+density_4 <-densityplot(~charges,data=insurance,
+       groups=smoker,
+       xlab="charges",
+       main="Fastest Speed Ever Driven,\nby Sex",
+       plot.points=FALSE,
+       auto.key=TRUE)
+grid.arrange(density_1,density_2,nrow = 1)
+grid.arrange(density_3,density_4,nrow = 1)
+```
+
+
+```{r echo=FALSE, fig.height=4, fig.width=8, fig.cap="Residual plot and Q-Q plot"}
+
+residul_plot.12 <- plot(fit_model_12)
+qq_plot.12     <- qqmath(fit_model_12)
+
+grid.arrange( residul_plot.12, qq_plot.12,nrow=2)
+```
+
+
+
+```{r fig.height=4, fig.width=6, fig.cap="Residual binned plot"}
+binnedplot(fitted(fit_model_12),resid(fit_model_12),main="Binned residual plot",cex.pts=1.3, col.pts=1, col.int="gray")
+```
+
+```{r fig.height=4, fig.width=8, fig.cap="Visualization of random effects"}
+visual_ef <- REsim(fit_model_12)
+pp <- plotREsim(visual_ef)
+pp
+```
+
+
+```{r echo = FALSE,fig.height=4, fig.width=6, fig.cap="Visualization of random effects"}
+
+dotplot(ranef(fit_model_12,condVar=TRUE))
 ```
 
